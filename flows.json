@@ -1,127 +1,138 @@
 [
     {
-        "id": "23fd3c6907a95f56",
+        "id": "471b8388549842f6",
         "type": "tab",
-        "label": "Flux 1",
+        "label": "Heart Monitor",
         "disabled": false,
         "info": "",
         "env": []
     },
     {
-        "id": "mqtt-in",
+        "id": "fa707eba3d4fc904",
+        "type": "comment",
+        "z": "471b8388549842f6",
+        "name": "topics",
+        "info": "Arduino vers Node-RED : heart/sensor/raw, JSON {\"bpm\":72,\"spo2\":98,\"temp\":31.5} toutes les 4 s (bpm et spo2 à -1 quand il n'y a pas de mesure)\nNode-RED vers Arduino : heart/display/bpm, BPM lissé (moyenne des 5 dernières mesures valides)",
+        "x": 200,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "8d1beddb3b246f69",
         "type": "mqtt in",
-        "z": "23fd3c6907a95f56",
-        "name": "Capteur Arduino",
+        "z": "471b8388549842f6",
+        "name": "",
         "topic": "heart/sensor/raw",
-        "qos": "2",
-        "datatype": "auto",
-        "broker": "ff64c8b2f18a9d24",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "hm_broker",
         "nl": false,
-        "rap": false,
+        "rap": true,
+        "rh": 0,
         "inputs": 0,
-        "x": 220,
-        "y": 380,
+        "x": 150,
+        "y": 120,
         "wires": [
             [
-                "json-parse",
-                "90db13a12e263efc"
+                "fbfaf83a525948bc"
             ]
         ]
     },
     {
-        "id": "json-parse",
-        "type": "json",
-        "z": "23fd3c6907a95f56",
-        "name": "Parse JSON",
-        "x": 450,
-        "y": 380,
-        "wires": [
-            [
-                "extract-bpm"
-            ]
-        ]
-    },
-    {
-        "id": "extract-bpm",
+        "id": "fbfaf83a525948bc",
         "type": "function",
-        "z": "23fd3c6907a95f56",
-        "name": "Extraire BPM",
-        "func": "msg.payload = msg.payload.bpm;\nreturn msg;",
-        "outputs": 1,
-        "timeout": "",
+        "z": "471b8388549842f6",
+        "name": "décoder le JSON",
+        "func": "const p = msg.payload;\nif (typeof p !== 'object' || p === null) return [null, null, null, null, null, null];\n\nconst bpm = Number(p.bpm);\nconst spo2 = Number(p.spo2);\nconst temp = Number(p.temp);\n\nconst bpmOk = bpm >= 30 && bpm <= 220;\nconst spo2Ok = spo2 > 0 && spo2 <= 100;\nconst valide = bpmOk && spo2Ok;\n\nif (valide) flow.set('detecte', true);\nconst detecte = flow.get('detecte') ?? false;\n\n// moyenne des 5 dernieres mesures valides, renvoyee a l'Arduino\nlet hist = flow.get('hist_bpm') ?? [];\nif (valide) {\n    hist.push(bpm);\n    if (hist.length > 5) hist.shift();\n} else {\n    hist = [];\n}\nflow.set('hist_bpm', hist);\nconst lisse = hist.length ? Math.round(hist.reduce((a, b) => a + b, 0) / hist.length) : null;\n\n// memes seuils que le code de la carte\nconst normal = valide && bpm >= 60 && bpm <= 100 && spo2 >= 95;\n\nlet signal;\nif (valide) signal = 'Signal capteur : OK';\nelse if (detecte) signal = 'Signal capteur : PERDU (alarme sur la carte)';\nelse signal = 'Signal capteur : en attente du doigt';\n\nlet rythme;\nif (!valide) rythme = 'Pas de mesure';\nelse if (normal) rythme = 'Rythme normal';\nelse rythme = 'Rythme anormal (' + bpm + ' bpm, SpO2 ' + spo2 + ' %)';\n\nreturn [\n    bpmOk ? { topic: 'BPM mesuré', payload: bpm } : null,\n    (valide && lisse !== null) ? { topic: 'BPM lissé', payload: lisse } : null,\n    spo2Ok ? { topic: 'SpO2', payload: spo2 } : null,\n    (!isNaN(temp) && temp > -40 && temp < 120) ? { topic: 'Température', payload: temp } : null,\n    { payload: signal },\n    { payload: rythme }\n];",
+        "outputs": 6,
+        "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 650,
-        "y": 380,
+        "x": 400,
+        "y": 120,
         "wires": [
             [
-                "mqtt-out",
-                "debug",
-                "cb74c0fa9e2ac513"
+                "2e64ca88201606c6",
+                "90c7be9ff80af2d7"
+            ],
+            [
+                "2e64ca88201606c6",
+                "e3cf3394e9bd15a2",
+                "bc23785e8663b2c6"
+            ],
+            [
+                "9f2c3fbba3211d7e",
+                "6705270aa21aa392"
+            ],
+            [
+                "fea7b8261e4a560c",
+                "a8ff556c655536a5"
+            ],
+            [
+                "adccfa0ed6834eef"
+            ],
+            [
+                "739af14714f89f76"
             ]
         ]
     },
     {
-        "id": "mqtt-out",
-        "type": "mqtt out",
-        "z": "23fd3c6907a95f56",
-        "name": "BPM traité → Arduino",
-        "topic": "heart/display/bpm",
-        "qos": "2",
-        "retain": false,
-        "respTopic": "",
-        "contentType": "",
-        "userProps": "",
-        "correl": "",
-        "expiry": "",
-        "broker": "ff64c8b2f18a9d24",
-        "x": 900,
-        "y": 380,
+        "id": "adccfa0ed6834eef",
+        "type": "ui-text",
+        "z": "471b8388549842f6",
+        "group": "hm_grp_etat",
+        "order": 1,
+        "width": "12",
+        "height": "1",
+        "name": "Signal capteur",
+        "label": "Capteur",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": true,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 700,
+        "y": 40,
         "wires": []
     },
     {
-        "id": "debug",
-        "type": "debug",
-        "z": "23fd3c6907a95f56",
-        "name": "Affichage",
-        "active": true,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": false,
-        "complete": "payload",
-        "targetType": "msg",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 860,
-        "y": 500,
+        "id": "739af14714f89f76",
+        "type": "ui-text",
+        "z": "471b8388549842f6",
+        "group": "hm_grp_etat",
+        "order": 2,
+        "width": "12",
+        "height": "1",
+        "name": "Rythme",
+        "label": "Rythme",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": true,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 700,
+        "y": 80,
         "wires": []
     },
     {
-        "id": "90db13a12e263efc",
-        "type": "debug",
-        "z": "23fd3c6907a95f56",
-        "name": "debug 1",
-        "active": true,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": false,
-        "complete": "payload",
-        "targetType": "msg",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 540,
-        "y": 500,
-        "wires": []
-    },
-    {
-        "id": "cb74c0fa9e2ac513",
+        "id": "2e64ca88201606c6",
         "type": "ui-chart",
-        "z": "23fd3c6907a95f56",
-        "group": "a227d4cba23ee16f",
-        "name": "",
-        "label": "chart",
+        "z": "471b8388549842f6",
+        "group": "hm_grp_bpm",
+        "name": "BPM",
+        "label": "BPM (5 dernières minutes)",
         "order": 1,
         "chartType": "line",
         "category": "topic",
@@ -143,21 +154,21 @@
         "action": "append",
         "stackSeries": false,
         "pointShape": "circle",
-        "pointRadius": 4,
+        "pointRadius": 3,
         "showLegend": true,
-        "removeOlder": 1,
-        "removeOlderUnit": "3600",
+        "removeOlder": 5,
+        "removeOlderUnit": "60",
         "removeOlderPoints": "",
         "colors": [
             "#0095ff",
-            "#ff0000",
             "#ff7f0e",
             "#2ca02c",
             "#a347e1",
             "#d62728",
             "#ff9896",
             "#9467bd",
-            "#c5b0d5"
+            "#c5b0d5",
+            "#8c564b"
         ],
         "textColor": [
             "#666666"
@@ -167,20 +178,427 @@
             "#e5e5e5"
         ],
         "gridColorDefault": true,
-        "width": 6,
-        "height": 8,
+        "width": "6",
+        "height": "5",
         "className": "",
         "interpolation": "linear",
-        "x": 850,
-        "y": 580,
+        "x": 700,
+        "y": 140,
         "wires": [
             []
         ]
     },
     {
-        "id": "ff64c8b2f18a9d24",
+        "id": "90c7be9ff80af2d7",
+        "type": "ui-gauge",
+        "z": "471b8388549842f6",
+        "name": "Jauge BPM",
+        "group": "hm_grp_bpm",
+        "order": 2,
+        "value": "payload",
+        "valueType": "msg",
+        "width": "3",
+        "height": "3",
+        "gtype": "gauge-half",
+        "gstyle": "needle",
+        "title": "BPM",
+        "units": "bpm",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "0",
+                "color": "#ffc800"
+            },
+            {
+                "from": "60",
+                "color": "#5cd65c"
+            },
+            {
+                "from": "100",
+                "color": "#ea5353"
+            }
+        ],
+        "min": 0,
+        "max": 220,
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 700,
+        "y": 180,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "e3cf3394e9bd15a2",
+        "type": "ui-text",
+        "z": "471b8388549842f6",
+        "group": "hm_grp_bpm",
+        "order": 3,
+        "width": "3",
+        "height": "1",
+        "name": "BPM envoyé",
+        "label": "Envoyé à l'Arduino",
+        "format": "{{msg.payload}} bpm",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": true,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 700,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "bc23785e8663b2c6",
+        "type": "mqtt out",
+        "z": "471b8388549842f6",
+        "name": "-> Arduino (BPM lissé)",
+        "topic": "heart/display/bpm",
+        "qos": "0",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "hm_broker",
+        "x": 700,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "9f2c3fbba3211d7e",
+        "type": "ui-chart",
+        "z": "471b8388549842f6",
+        "group": "hm_grp_spo2",
+        "name": "SpO2",
+        "label": "SpO2 (5 dernières minutes)",
+        "order": 1,
+        "chartType": "line",
+        "category": "topic",
+        "categoryType": "msg",
+        "xAxisLabel": "",
+        "xAxisProperty": "",
+        "xAxisPropertyType": "timestamp",
+        "xAxisType": "time",
+        "xAxisFormat": "",
+        "xAxisFormatType": "auto",
+        "xmin": "",
+        "xmax": "",
+        "yAxisLabel": "",
+        "yAxisProperty": "payload",
+        "yAxisPropertyType": "msg",
+        "ymin": "70",
+        "ymax": "100",
+        "bins": 10,
+        "action": "append",
+        "stackSeries": false,
+        "pointShape": "circle",
+        "pointRadius": 3,
+        "showLegend": false,
+        "removeOlder": 5,
+        "removeOlderUnit": "60",
+        "removeOlderPoints": "",
+        "colors": [
+            "#0095ff",
+            "#ff7f0e",
+            "#2ca02c",
+            "#a347e1",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5",
+            "#8c564b"
+        ],
+        "textColor": [
+            "#666666"
+        ],
+        "textColorDefault": true,
+        "gridColor": [
+            "#e5e5e5"
+        ],
+        "gridColorDefault": true,
+        "width": "6",
+        "height": "5",
+        "className": "",
+        "interpolation": "linear",
+        "x": 700,
+        "y": 320,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "6705270aa21aa392",
+        "type": "ui-gauge",
+        "z": "471b8388549842f6",
+        "name": "Jauge SpO2",
+        "group": "hm_grp_spo2",
+        "order": 2,
+        "value": "payload",
+        "valueType": "msg",
+        "width": "3",
+        "height": "3",
+        "gtype": "gauge-half",
+        "gstyle": "needle",
+        "title": "SpO2",
+        "units": "%",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "70",
+                "color": "#ea5353"
+            },
+            {
+                "from": "90",
+                "color": "#ffc800"
+            },
+            {
+                "from": "95",
+                "color": "#5cd65c"
+            }
+        ],
+        "min": 70,
+        "max": 100,
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 700,
+        "y": 360,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "fea7b8261e4a560c",
+        "type": "ui-chart",
+        "z": "471b8388549842f6",
+        "group": "hm_grp_temp",
+        "name": "Température",
+        "label": "Température (°C)",
+        "order": 1,
+        "chartType": "line",
+        "category": "topic",
+        "categoryType": "msg",
+        "xAxisLabel": "",
+        "xAxisProperty": "",
+        "xAxisPropertyType": "timestamp",
+        "xAxisType": "time",
+        "xAxisFormat": "",
+        "xAxisFormatType": "auto",
+        "xmin": "",
+        "xmax": "",
+        "yAxisLabel": "",
+        "yAxisProperty": "payload",
+        "yAxisPropertyType": "msg",
+        "ymin": "",
+        "ymax": "",
+        "bins": 10,
+        "action": "append",
+        "stackSeries": false,
+        "pointShape": "circle",
+        "pointRadius": 3,
+        "showLegend": false,
+        "removeOlder": 5,
+        "removeOlderUnit": "60",
+        "removeOlderPoints": "",
+        "colors": [
+            "#0095ff",
+            "#ff7f0e",
+            "#2ca02c",
+            "#a347e1",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5",
+            "#8c564b"
+        ],
+        "textColor": [
+            "#666666"
+        ],
+        "textColorDefault": true,
+        "gridColor": [
+            "#e5e5e5"
+        ],
+        "gridColorDefault": true,
+        "width": "6",
+        "height": "5",
+        "className": "",
+        "interpolation": "linear",
+        "x": 700,
+        "y": 420,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a8ff556c655536a5",
+        "type": "ui-gauge",
+        "z": "471b8388549842f6",
+        "name": "Jauge température",
+        "group": "hm_grp_temp",
+        "order": 2,
+        "value": "payload",
+        "valueType": "msg",
+        "width": "3",
+        "height": "3",
+        "gtype": "gauge-half",
+        "gstyle": "needle",
+        "title": "Température",
+        "units": "°C",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "15",
+                "color": "#5cd65c"
+            },
+            {
+                "from": "37.5",
+                "color": "#ffc800"
+            },
+            {
+                "from": "38.5",
+                "color": "#ea5353"
+            }
+        ],
+        "min": 15,
+        "max": 45,
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 700,
+        "y": 460,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a7d3ac69aaaee37d",
+        "type": "comment",
+        "z": "471b8388549842f6",
+        "name": "tests sans Arduino",
+        "info": "",
+        "x": 180,
+        "y": 330,
+        "wires": []
+    },
+    {
+        "id": "7c689e1eb1effcf4",
+        "type": "inject",
+        "z": "471b8388549842f6",
+        "name": "mesure normale",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"bpm\":72,\"spo2\":98,\"temp\":31.5}",
+        "payloadType": "json",
+        "x": 160,
+        "y": 380,
+        "wires": [
+            [
+                "26a08ff9e3656485"
+            ]
+        ]
+    },
+    {
+        "id": "503988c09c373de8",
+        "type": "inject",
+        "z": "471b8388549842f6",
+        "name": "rythme anormal",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"bpm\":120,\"spo2\":93,\"temp\":31.5}",
+        "payloadType": "json",
+        "x": 160,
+        "y": 420,
+        "wires": [
+            [
+                "26a08ff9e3656485"
+            ]
+        ]
+    },
+    {
+        "id": "2fbe89cd25fb9d50",
+        "type": "inject",
+        "z": "471b8388549842f6",
+        "name": "pas de mesure",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"bpm\":-1,\"spo2\":-1,\"temp\":31.5}",
+        "payloadType": "json",
+        "x": 160,
+        "y": 460,
+        "wires": [
+            [
+                "26a08ff9e3656485"
+            ]
+        ]
+    },
+    {
+        "id": "26a08ff9e3656485",
+        "type": "mqtt out",
+        "z": "471b8388549842f6",
+        "name": "publie heart/sensor/raw",
+        "topic": "heart/sensor/raw",
+        "qos": "0",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "hm_broker",
+        "x": 440,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "hm_broker",
         "type": "mqtt-broker",
-        "name": "broker emqx",
+        "name": "Broker public EMQX",
         "broker": "broker.emqx.io",
         "port": 1883,
         "clientid": "",
@@ -209,48 +627,90 @@
         "sessionExpiry": ""
     },
     {
-        "id": "a227d4cba23ee16f",
+        "id": "hm_grp_etat",
         "type": "ui-group",
-        "name": "Group 1",
-        "page": "82b8bf4fbb42bf1a",
-        "width": 6,
-        "height": 1,
+        "name": "État",
+        "page": "hm_ui_page",
+        "width": "12",
+        "height": "1",
         "order": 1,
         "showTitle": true,
         "className": "",
-        "visible": true,
-        "disabled": false,
+        "visible": "true",
+        "disabled": "false",
         "groupType": "default"
     },
     {
-        "id": "82b8bf4fbb42bf1a",
+        "id": "hm_grp_bpm",
+        "type": "ui-group",
+        "name": "Rythme cardiaque",
+        "page": "hm_ui_page",
+        "width": "6",
+        "height": "1",
+        "order": 2,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "hm_grp_spo2",
+        "type": "ui-group",
+        "name": "SpO2",
+        "page": "hm_ui_page",
+        "width": "6",
+        "height": "1",
+        "order": 3,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "hm_grp_temp",
+        "type": "ui-group",
+        "name": "Température du capteur",
+        "page": "hm_ui_page",
+        "width": "6",
+        "height": "1",
+        "order": 4,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "hm_ui_page",
         "type": "ui-page",
-        "name": "Page 1",
+        "name": "Heart Monitor",
         "ui": "dc10adc2158ca39d",
-        "path": "/page1",
-        "icon": "home",
+        "path": "/heart",
+        "icon": "heart",
         "layout": "grid",
-        "theme": "3f9dfc913b5e7358",
+        "theme": "hm_ui_theme",
         "breakpoints": [
             {
                 "name": "Default",
-                "px": 0,
-                "cols": 3
+                "px": "0",
+                "cols": "6"
             },
             {
                 "name": "Tablet",
-                "px": 576,
-                "cols": 6
+                "px": "576",
+                "cols": "6"
             },
             {
                 "name": "Small Desktop",
-                "px": 768,
-                "cols": 9
+                "px": "768",
+                "cols": "12"
             },
             {
                 "name": "Desktop",
-                "px": 1024,
-                "cols": 12
+                "px": "1024",
+                "cols": "12"
             }
         ],
         "order": 1,
@@ -279,15 +739,15 @@
         "allowInstall": false
     },
     {
-        "id": "3f9dfc913b5e7358",
+        "id": "hm_ui_theme",
         "type": "ui-theme",
-        "name": "Default Theme",
+        "name": "Theme Heart Monitor",
         "colors": {
-            "surface": "#fcfcfd",
-            "primary": "#0d74ce",
-            "bgPage": "#f9f9fb",
+            "surface": "#ffffff",
+            "primary": "#0094CE",
+            "bgPage": "#eeeeee",
             "groupBg": "#ffffff",
-            "groupOutline": "#d9d9e0"
+            "groupOutline": "#cccccc"
         },
         "sizes": {
             "density": "default",
@@ -298,7 +758,7 @@
         }
     },
     {
-        "id": "d3c1909978357efa",
+        "id": "14285d83eb502faa",
         "type": "global-config",
         "env": [],
         "modules": {
